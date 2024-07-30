@@ -63,7 +63,7 @@ def init_pipeline():
     id_encoder_path     = base_path + "/pytorch_model_1.bin"
     pose_encoder_path   = base_path + "/pytorch_model_2.bin"
 
-    Unet              = OriginalUNet2DConditionModel.from_pretrained(model_id, device=device, subfolder="unet")
+    Unet              = OriginalUNet2DConditionModel.from_pretrained(model_id, device=device, subfolder="unet").half()
     id_encoder        = ControlNetModel.from_unet(Unet)
     pose_encoder      = ControlNetModel.from_unet(Unet)
     makeup_encoder    = detail_encoder(Unet, "openai/clip-vit-large-patch14", device=device, dtype=torch.float16)
@@ -73,9 +73,9 @@ def init_pipeline():
     id_encoder.load_state_dict(id_state_dict, strict=False)
     pose_encoder.load_state_dict(pose_state_dict, strict=False)
     makeup_encoder.load_state_dict(makeup_state_dict, strict=False)
-    id_encoder.to(device=device)
-    pose_encoder.to(device=device)
-    makeup_encoder.to(device=device)
+    id_encoder.to(device=device).half()
+    pose_encoder.to(device=device).half()
+    makeup_encoder.to(device=device).half()
 
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
         model_id, safety_checker=None, unet=Unet, controlnet=[id_encoder, pose_encoder], device=device, torch_dtype=torch.float16
