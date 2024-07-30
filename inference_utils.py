@@ -1,5 +1,6 @@
 import os
-import torch, random
+import torch
+import random
 
 seed = 1024
 random.seed(seed)
@@ -10,12 +11,12 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 # SPIGA ckpt downloading always fails, so we download it manually and put it in the right place.
-import site
+import spiga
 from gdown import download
 
-user_site_packages_path = site.getusersitepackages()
+pkg_path = spiga.__file__.replace("/__init__.py", "")
 spiga_file_id = "1YrbScfMzrAAWMJQYgxdLZ9l57nmTdpQC"
-ckpt_path = os.path.join(user_site_packages_path, "spiga/models/weights/spiga_300wpublic.pt")
+ckpt_path = os.path.join(pkg_path, "spiga/models/weights/spiga_300wpublic.pt")
 if not os.path.exists(ckpt_path):
     os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
     download(id=spiga_file_id, output=ckpt_path)
@@ -29,7 +30,6 @@ from pipeline_sd15 import StableDiffusionControlNetPipeline
 from diffusers import DDIMScheduler, ControlNetModel
 from diffusers import UNet2DConditionModel as OriginalUNet2DConditionModel
 from detail_encoder.encoder_plus import detail_encoder
-
 
 detector = FaceDetector(weight_path="./models/mobilenet0.25_Final.pth")
 
@@ -64,21 +64,21 @@ def concatenate_images(image_files, output_file):
 
 def init_pipeline():
     # Initialize the model
-    model_id = "runwayml/stable-diffusion-v1-5"  # or your local sdv1-5 path
+    model_id  = "runwayml/stable-diffusion-v1-5"  # or your local sdv1-5 path
     base_path = "./checkpoints/stablemakeup"
     folder_id = "1397t27GrUyLPnj17qVpKWGwg93EcaFfg"
     if not os.path.exists(base_path):
         download_folder(id=folder_id, output=base_path, quiet=False, use_cookies=False)
     makeup_encoder_path = base_path + "/pytorch_model.bin"
-    id_encoder_path = base_path + "/pytorch_model_1.bin"
-    pose_encoder_path = base_path + "/pytorch_model_2.bin"
+    id_encoder_path     = base_path + "/pytorch_model_1.bin"
+    pose_encoder_path   = base_path + "/pytorch_model_2.bin"
 
-    Unet = OriginalUNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to("cuda")
-    id_encoder = ControlNetModel.from_unet(Unet)
-    pose_encoder = ControlNetModel.from_unet(Unet)
-    makeup_encoder = detail_encoder(Unet, "openai/clip-vit-large-patch14", "cuda", dtype=torch.float32)
-    id_state_dict = torch.load(id_encoder_path)
-    pose_state_dict = torch.load(pose_encoder_path)
+    Unet              = OriginalUNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to("cuda")
+    id_encoder        = ControlNetModel.from_unet(Unet)
+    pose_encoder      = ControlNetModel.from_unet(Unet)
+    makeup_encoder    = detail_encoder(Unet, "openai/clip-vit-large-patch14", "cuda", dtype=torch.float32)
+    id_state_dict     = torch.load(id_encoder_path)
+    pose_state_dict   = torch.load(pose_encoder_path)
     makeup_state_dict = torch.load(makeup_encoder_path)
     id_encoder.load_state_dict(id_state_dict, strict=False)
     pose_encoder.load_state_dict(pose_state_dict, strict=False)
@@ -99,10 +99,8 @@ pipeline, makeup_encoder = init_pipeline()
 
 
 def inference(id_image_pil, makeup_image_pil, guidance_scale=1.6, size=512):
-    id_image = id_image_pil.resize((size, size))
+    id_image     = id_image_pil.resize((size, size))
     makeup_image = makeup_image_pil.resize((size, size))
-    pose_image = get_draw(id_image, size=size)
-    result_img = makeup_encoder.generate(
-        id_image=[id_image, pose_image], makeup_image=makeup_image, pipe=pipeline, guidance_scale=guidance_scale
-    )
+    pose_image   = get_draw(id_image, size=size)
+    result_img   = makeup_encoder.generate(id_image=[id_image, pose_image], makeup_image=makeup_image, pipe=pipeline, guidance_scale=guidance_scale)
     return result_img
