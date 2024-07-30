@@ -21,7 +21,7 @@ from diffusers import DDIMScheduler, ControlNetModel
 from diffusers import UNet2DConditionModel as OriginalUNet2DConditionModel
 from detail_encoder.encoder_plus import detail_encoder
 
-
+device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
 
 def get_draw(pil_img, size):
     cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
@@ -63,23 +63,23 @@ def init_pipeline():
     id_encoder_path     = base_path + "/pytorch_model_1.bin"
     pose_encoder_path   = base_path + "/pytorch_model_2.bin"
 
-    Unet              = OriginalUNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to("cuda")
+    Unet              = OriginalUNet2DConditionModel.from_pretrained(model_id, device=device, subfolder="unet")
     id_encoder        = ControlNetModel.from_unet(Unet)
     pose_encoder      = ControlNetModel.from_unet(Unet)
-    makeup_encoder    = detail_encoder(Unet, "openai/clip-vit-large-patch14", "cuda", dtype=torch.float32)
+    makeup_encoder    = detail_encoder(Unet, "openai/clip-vit-large-patch14", device=device, dtype=torch.float16)
     id_state_dict     = torch.load(id_encoder_path)
     pose_state_dict   = torch.load(pose_encoder_path)
     makeup_state_dict = torch.load(makeup_encoder_path)
     id_encoder.load_state_dict(id_state_dict, strict=False)
     pose_encoder.load_state_dict(pose_state_dict, strict=False)
     makeup_encoder.load_state_dict(makeup_state_dict, strict=False)
-    id_encoder.to("cuda")
-    pose_encoder.to("cuda")
-    makeup_encoder.to("cuda")
+    id_encoder.to(device=device)
+    pose_encoder.to(device=device)
+    makeup_encoder.to(device=device)
 
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        model_id, safety_checker=None, unet=Unet, controlnet=[id_encoder, pose_encoder], torch_dtype=torch.float32
-    ).to("cuda")
+        model_id, safety_checker=None, unet=Unet, controlnet=[id_encoder, pose_encoder], device=device, torch_dtype=torch.float16
+    ).to(device=device)
     pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
     return pipe, makeup_encoder
 
