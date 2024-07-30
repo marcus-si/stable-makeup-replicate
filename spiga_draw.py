@@ -1,22 +1,26 @@
 import os
 import cv2
 import tqdm
+import torch
 import numpy as np
 from PIL import Image
-from facelib import FaceDetector
+from batch_face import RetinaFace
 from spiga.inference.config import ModelConfig
 from spiga.inference.framework import SPIGAFramework
 
-# SPIGA ckpt downloading always fails, so we load it from the local path instead.
+# The SPIGA checkpoint download often fails, so we downloaded it manually and will load it from a local path instead.
 spiga_ckpt = os.path.join(os.path.dirname(__file__), "checkpoints/spiga_300wpublic.pt")
 if not os.path.exists(spiga_ckpt):
     from gdown import download
+
     spiga_file_id = "1YrbScfMzrAAWMJQYgxdLZ9l57nmTdpQC"
     download(id=spiga_file_id, output=spiga_ckpt)
 spiga_config = ModelConfig("300wpublic")
 spiga_config.load_model_url = False
 spiga_config.model_weights_path = os.path.dirname(spiga_ckpt)
 processor = SPIGAFramework(spiga_config)
+face_detector = RetinaFace(gpu_id=0) if torch.cuda.is_available() else RetinaFace(gpu_id=-1)
+
 
 def center_crop(image, size):
     width, height = image.size
@@ -26,6 +30,7 @@ def center_crop(image, size):
     bottom = top + size
     cropped_image = image.crop((left, top, right, bottom))
     return cropped_image
+
 
 def resize(image, size):
     width, height = image.size
@@ -40,33 +45,32 @@ def resize(image, size):
     resized_image = image.resize((new_width, new_height))
     return resized_image
 
+
 def preprocess(example, name, path):
     image = resize(example, 512)
     # 调用中心剪裁函数
     cropped_image = center_crop(image, 512)
     # 保存剪裁后的图像
-    cropped_image.save(path+name)
+    cropped_image.save(path + name)
     return cropped_image
+
 
 # We obtain the bbox from the existing landmarks in the dataset.
 # We could use `dlib`, but this should be faster.
 # Note that the `landmarks` are stored as strings.
 
-def get_landmarks(image, detector):
-    image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
-    faces, boxes, scores, landmarks = detector.detect_align(image)  # 一定要用align啊
-    boxes = boxes.cpu().numpy()
-    box_ls = []
-    for box in boxes:
-        x, y, x1, y1 = box
-        box = x, y, x1 - x, y1 - y
-        box_ls.append(box)
-    if len(box_ls) == 0:
-        return []
+
+def get_landmarks(frame_cv2):
+    faces = face_detector(frame_cv2, cv=True)
+    if len(faces) == 0:
+        raise ValueError("Face is not detected")
     else:
-        features = processor.inference(image, box_ls)
-        landmarks = np.array(features['landmarks'])
-        return landmarks
+        coord = faces[0][0]
+    x, y, x1, y1 = coord
+    box = x, y, x1 - x, y1 - y
+    features = processor.inference(frame_cv2, [box])
+    landmarks = np.array(features["landmarks"])
+    return landmarks
 
 
 def parse_landmarks(landmarks):
@@ -88,29 +92,28 @@ def bbox_from_landmarks(landmarks_):
         height = y_max - y_min
 
         # Give it a little room; I think it works anyway
-        x_min  -= 5
-        y_min  -= 5
-        width  += 10
+        x_min -= 5
+        y_min -= 5
+        width += 10
         height += 10
         bbox.append((x_min, y_min, width, height))
     return bbox
 
 
-def spiga_process(example, detector):
-    ldms = get_landmarks(example, detector)
+def spiga_process(image):
+    ldms = get_landmarks(image)
 
     if len(ldms) == 0:
         return False
 
     else:
-        image = example
         image = np.array(image)
         # BGR
-        image     = image[:, :, ::-1]
-        bbox      = bbox_from_landmarks(ldms)
-        features  = processor.inference(image, [*bbox])
+        image = image[:, :, ::-1]
+        bbox = bbox_from_landmarks(ldms)
+        features = processor.inference(image, [*bbox])
         landmarks = features["landmarks"]
-        spigas    = landmarks
+        spigas = landmarks
         return spigas
 
 
@@ -128,7 +131,7 @@ from matplotlib.path import Path
 import PIL
 
 
-def get_patch(landmarks, color='lime', closed=False):
+def get_patch(landmarks, color="lime", closed=False):
     contour = landmarks
     ops = [Path.MOVETO] + [Path.LINETO] * (len(contour) - 1)
     facecolor = (0, 0, 0, 0)  # Transparent fill color, if open
@@ -142,10 +145,11 @@ def get_patch(landmarks, color='lime', closed=False):
 
 # Draw to a buffer.
 
+
 def conditioning_from_landmarks(landmarks_, size=512):
     # Precisely control output image size
     dpi = 72
-    fig, ax = plt.subplots(1, figsize=[size / dpi, size / dpi], tight_layout={'pad': 0})
+    fig, ax = plt.subplots(1, figsize=[size / dpi, size / dpi], tight_layout={"pad": 0})
     fig.set_dpi(dpi)
 
     black = np.zeros((size, size, 3))
@@ -153,14 +157,14 @@ def conditioning_from_landmarks(landmarks_, size=512):
 
     for landmarks in landmarks_:
         face_patch = get_patch(landmarks[0:17])
-        l_eyebrow  = get_patch(landmarks[17:22], color='yellow')
-        r_eyebrow  = get_patch(landmarks[22:27], color='yellow')
-        nose_v     = get_patch(landmarks[27:31], color='orange')
-        nose_h     = get_patch(landmarks[31:36], color='orange')
-        l_eye      = get_patch(landmarks[36:42], color='magenta', closed=True)
-        r_eye      = get_patch(landmarks[42:48], color='magenta', closed=True)
-        outer_lips = get_patch(landmarks[48:60], color='cyan', closed=True)
-        inner_lips = get_patch(landmarks[60:68], color='blue', closed=True)
+        l_eyebrow  = get_patch(landmarks[17:22], color="yellow")
+        r_eyebrow  = get_patch(landmarks[22:27], color="yellow")
+        nose_v     = get_patch(landmarks[27:31], color="orange")
+        nose_h     = get_patch(landmarks[31:36], color="orange")
+        l_eye      = get_patch(landmarks[36:42], color="magenta", closed=True)
+        r_eye      = get_patch(landmarks[42:48], color="magenta", closed=True)
+        outer_lips = get_patch(landmarks[48:60], color="cyan", closed=True)
+        inner_lips = get_patch(landmarks[60:68], color="blue", closed=True)
 
         ax.add_patch(face_patch)
         ax.add_patch(l_eyebrow)
@@ -172,7 +176,7 @@ def conditioning_from_landmarks(landmarks_, size=512):
         ax.add_patch(outer_lips)
         ax.add_patch(inner_lips)
 
-        plt.axis('off')
+        plt.axis("off")
 
         fig.canvas.draw()
     buffer, (width, height) = fig.canvas.print_to_buffer()
@@ -189,31 +193,3 @@ def spiga_segmentation(spiga, size):
     landmarks = spiga
     spiga_seg = conditioning_from_landmarks(landmarks, size=size)
     return spiga_seg
-
-
-if __name__ == '__main__':
-    # ## Obtain SPIGA features
-    processor = SPIGAFramework(ModelConfig("300wpublic"))
-    detector = FaceDetector(weight_path="/share2/zhangyuxuan/project/train_ip_cn/datasets/make_kps/pretrained_models/mobilenet0.25_Final.pth")
-
-    id_folder = "/share2/zhangyuxuan/project/train_ip_cn/test_img_2/id/"
-    pose_folder = "/share2/zhangyuxuan/project/train_ip_cn/test_img_2/pose/"
-
-    if not os.path.exists(pose_folder):
-        os.makedirs(pose_folder)
-
-    pbar = tqdm.tqdm(os.listdir(id_folder))
-    for name in pbar:
-        face = Image.open(id_folder+name).convert("RGB").resize((512, 512))
-        face.save(id_folder+name)
-        spigas = spiga_process(face, detector)
-        if spigas == False:
-            height = 512
-            width = 512
-            channels = 3
-            black_image = np.zeros((height, width, channels), dtype=np.uint8)
-            black_image_cv2 = cv2.cvtColor(black_image, cv2.COLOR_RGB2BGR)
-            continue
-        else:
-            spigas_faces = spiga_segmentation(spigas)
-            spigas_faces.save(pose_folder + name)

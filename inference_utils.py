@@ -1,6 +1,8 @@
 import os
+import cv2
 import torch
 import random
+import numpy as np
 
 seed = 1024
 random.seed(seed)
@@ -12,7 +14,6 @@ torch.backends.cudnn.benchmark = False
 
 from PIL import Image
 from gdown import download_folder
-from facelib import FaceDetector
 from spiga_draw import spiga_process, spiga_segmentation
 
 from pipeline_sd15 import StableDiffusionControlNetPipeline
@@ -20,11 +21,11 @@ from diffusers import DDIMScheduler, ControlNetModel
 from diffusers import UNet2DConditionModel as OriginalUNet2DConditionModel
 from detail_encoder.encoder_plus import detail_encoder
 
-detector = FaceDetector(weight_path="./models/mobilenet0.25_Final.pth")
 
 
 def get_draw(pil_img, size):
-    spigas = spiga_process(pil_img, detector)
+    cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    spigas = spiga_process(cv2_img)
     if spigas == False:
         width, height = pil_img.size
         black_image_pil = Image.new("RGB", (width, height), color=(0, 0, 0))
