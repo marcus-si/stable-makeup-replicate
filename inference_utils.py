@@ -10,17 +10,6 @@ torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-# SPIGA ckpt downloading always fails, so we download it manually and put it in the right place.
-import spiga
-from gdown import download
-
-pkg_path = spiga.__file__.replace("/__init__.py", "")
-spiga_file_id = "1YrbScfMzrAAWMJQYgxdLZ9l57nmTdpQC"
-ckpt_path = os.path.join(pkg_path, "spiga/models/weights/spiga_300wpublic.pt")
-if not os.path.exists(ckpt_path):
-    os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
-    download(id=spiga_file_id, output=ckpt_path)
-
 from PIL import Image
 from gdown import download_folder
 from facelib import FaceDetector
