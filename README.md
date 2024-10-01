@@ -1,5 +1,5 @@
 ---
-title: Stable Makeup
+title: Stable-Makeup
 emoji: 💄
 colorFrom: yellow
 colorTo: green
