@@ -1,6 +1,6 @@
 ---
 title: Stable Makeup
-emoji: 📈
+emoji: 💄
 colorFrom: yellow
 colorTo: green
 sdk: gradio
