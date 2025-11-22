@@ -85,10 +85,12 @@ def init_pipeline():
 
 
 # Initialize the model
-pipeline, makeup_encoder = init_pipeline()
+# pipeline, makeup_encoder = init_pipeline()
 
 
-def inference(id_image_pil, makeup_image_pil, guidance_scale=1.6, size=512):
+def inference(pipeline, makeup_encoder, id_image_path, makeup_image_path, guidance_scale=1.6, size=512):
+    id_image_pil     = Image.open(id_image_path).convert("RGB")
+    makeup_image_pil = Image.open(makeup_image_path).convert("RGB")
     id_image     = id_image_pil.resize((size, size))
     makeup_image = makeup_image_pil.resize((size, size))
     pose_image   = get_draw(id_image, size=size)
