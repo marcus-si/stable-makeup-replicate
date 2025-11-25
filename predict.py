@@ -2,13 +2,14 @@
 # https://cog.run/python
 
 from cog import BasePredictor, Input, Path
+from huggingface_hub import snapshot_download
 import inference_utils as inference 
-
 
 class Predictor(BasePredictor):
     def setup(self) -> None:
         """Load the model into memory to make running multiple predictions efficient"""
         # self.model = torch.load("./weights.pth")
+        snapshot_download(repo_id="msi2/Stable-Makeup-unofficial", repo_type="space", allow_patterns="checkpoints/*")
         self.pipeline, self.makeup_encoder = inference.init_pipeline()
 
     def predict(
